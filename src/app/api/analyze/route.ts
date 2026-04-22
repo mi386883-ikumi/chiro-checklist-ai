@@ -113,6 +113,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ result })
   } catch (err) {
     console.error('Analyze error:', err)
-    return NextResponse.json({ error: 'AI分析中にエラーが発生しました' }, { status: 500 })
+    const msg = err instanceof Error ? err.message : String(err)
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
