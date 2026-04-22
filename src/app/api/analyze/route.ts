@@ -59,7 +59,7 @@ ${patient.q1_complaint || '記載なし'}
 - 飲酒: ${patient.q19_drinking || '記載なし'}
 
 【来院について】
-- 居住地（市区町村まで）: ${extractCityArea(patient.q5_address)}
+- 居住エリア: ${extractCityArea(patient.q5_address)}
 - 来院しやすい曜日: ${patient.q20_visit_days || '記載なし'}
 - 来院しやすい時間帯: ${patient.q21_visit_times || '記載なし'}
 - ご要望・ご質問: ${patient.q23_requests || '記載なし'}`
