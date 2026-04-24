@@ -27,6 +27,7 @@ const SYSTEM_PROMPT = `あなたは整体院の施術準備をサポートする
 
 ルール:
 - checkItemsのcategoryは主訴に応じて動的に変える（3〜5カテゴリ）
+- 特に「気になる症状の深掘り」「症状が出た時期」「その他のお悩み」「病歴・既往歴」を必ずカバーする
 - optionsは患者が答えやすい具体的な選択肢を2〜5個提示する
 - 病歴・喫煙・飲酒・運動習慣も考慮しadviceのpriorityを判断
 - adviceは3〜6項目を生成する
@@ -41,35 +42,19 @@ ${patient.q1_complaint || '記載なし'}
 
 【症状・身体の悩み】
 - 気になる症状: ${patient.q11_symptoms || '記載なし'}
-- 期待している効果: ${patient.q12_expectations || '記載なし'}
 - 症状が出た時期: ${patient.q13_duration || '記載なし'}
 - その他の悩み: ${patient.q14_other_concerns || '記載なし'}
-- 病歴: ${patient.q22_medical_history || '記載なし'}
+- 病歴・既往歴: ${patient.q22_medical_history || '記載なし'}
 
 【基本情報】
 - 性別: ${patient.q8_gender || '記載なし'}
 - 年齢: ${age}
-- 来院きっかけ: ${patient.q10_source || '記載なし'}
 
 【生活習慣】
-- 職業: ${patient.q15_occupation || '記載なし'}
-- 運動: ${patient.q16_exercise || '記載なし'}
-- 趣味・休日: ${patient.q17_hobbies || '記載なし'}
+- 運動の頻度や習慣: ${patient.q16_exercise || '記載なし'}
+- 趣味: ${patient.q17_hobbies || '記載なし'}
 - 喫煙: ${patient.q18_smoking || '記載なし'}
-- 飲酒: ${patient.q19_drinking || '記載なし'}
-
-【来院について】
-- 居住エリア: ${extractCityArea(patient.q5_address)}
-- 来院しやすい曜日: ${patient.q20_visit_days || '記載なし'}
-- 来院しやすい時間帯: ${patient.q21_visit_times || '記載なし'}
-- ご要望・ご質問: ${patient.q23_requests || '記載なし'}`
-}
-
-function extractCityArea(address: string): string {
-  if (!address) return '記載なし'
-  const match = address.match(/^(.{2,6}[都道府県])(.{2,6}[市区町村])/)
-  if (match) return `${match[1]}${match[2]}`
-  return address.substring(0, 10) + (address.length > 10 ? '...' : '')
+- 飲酒: ${patient.q19_drinking || '記載なし'}`
 }
 
 export async function POST(req: NextRequest) {
@@ -89,9 +74,11 @@ export async function POST(req: NextRequest) {
 
     const message = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 2048,
+      max_tokens: 8192,
       system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: buildUserMessage(patient, age || '不明') }],
+      messages: [
+        { role: 'user', content: buildUserMessage(patient, age || '不明') },
+      ],
     })
 
     const content = message.content[0]
@@ -101,8 +88,10 @@ export async function POST(req: NextRequest) {
 
     let result: AnalysisResult
     try {
-      const jsonText = content.text.replace(/```json\n?|\n?```/g, '').trim()
-      result = JSON.parse(jsonText)
+      const stripped = content.text.replace(/```json\n?|\n?```/g, '').trim()
+      const match = stripped.match(/\{[\s\S]*\}/)
+      if (!match) throw new Error('JSON not found')
+      result = JSON.parse(match[0])
     } catch {
       return NextResponse.json(
         { error: 'AIのレスポンスをパースできませんでした', raw: content.text },
