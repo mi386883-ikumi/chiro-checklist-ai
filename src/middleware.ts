@@ -21,13 +21,25 @@ function getValidTokens(): string[] {
 }
 
 const PUBLIC_PATHS = ['/login', '/api/auth/login', '/_next', '/favicon.ico']
+const SESSION_MAX_AGE = 60 * 10 // 10分（操作のたびに延長）
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
   if (PUBLIC_PATHS.some(p => pathname.startsWith(p))) return NextResponse.next()
 
   const token = req.cookies.get('auth_token')?.value
-  if (token && getValidTokens().includes(token)) return NextResponse.next()
+  if (token && getValidTokens().includes(token)) {
+    // スライディングセッション：アクセスごとに有効期限をリセット
+    const res = NextResponse.next()
+    res.cookies.set('auth_token', token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'lax',
+      maxAge: SESSION_MAX_AGE,
+      path: '/',
+    })
+    return res
+  }
 
   const loginUrl = req.nextUrl.clone()
   loginUrl.pathname = '/login'
