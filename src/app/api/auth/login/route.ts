@@ -32,14 +32,15 @@ export async function POST(req: NextRequest) {
   }
 
   const secret = process.env.AUTH_SECRET ?? 'default-secret'
-  const token = encodeB64(`${user}:${secret}`)
+  const token = encodeB64(`${user}\x00${secret}\x00${Date.now()}`)
   const res = NextResponse.json({ ok: true })
   res.cookies.set('auth_token', token, {
     httpOnly: true,
     secure: true,
     sameSite: 'lax',
-    maxAge: 60 * 10,
     path: '/',
+    // maxAge を指定しない = セッションクッキー（ブラウザ終了で自動削除）
+    // 10分無操作時のタイムアウトは middleware 側でタイムスタンプチェック
   })
   return res
 }
