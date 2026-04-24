@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+function encodeB64(str: string): string {
+  const bytes = new TextEncoder().encode(str)
+  let binary = ''
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+  return btoa(binary)
+}
+
 function getUsers(): { user: string; pass: string }[] {
   // AUTH_USERS format: "user1:pass1,user2:pass2"
   const multi = process.env.AUTH_USERS
@@ -25,7 +32,7 @@ export async function POST(req: NextRequest) {
   }
 
   const secret = process.env.AUTH_SECRET ?? 'default-secret'
-  const token = btoa(`${user}:${secret}`)
+  const token = encodeB64(`${user}:${secret}`)
   const res = NextResponse.json({ ok: true })
   res.cookies.set('auth_token', token, {
     httpOnly: true,
