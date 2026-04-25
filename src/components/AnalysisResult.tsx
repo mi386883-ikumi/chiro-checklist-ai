@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import type { Patient, AnalysisResult as AnalysisResultType, Advice } from '@/lib/types'
+import type { Patient, AnalysisResult as AnalysisResultType, Advice, AnswerState, ManualNotes } from '@/lib/types'
 
 interface Props {
   patient: Patient
@@ -10,14 +10,75 @@ interface Props {
   onBackToList: () => void
 }
 
+const EMPTY_NOTES: ManualNotes = {
+  rangeOfMotion: '',
+  painLocation: '',
+  posture: '',
+  other: '',
+}
+
 export default function AnalysisResult({ patient, result, onBackToDetail, onBackToList }: Props) {
   const [copied, setCopied] = useState(false)
+  const [answers, setAnswers] = useState<Record<string, AnswerState>>({})
+  const [notes, setNotes] = useState<ManualNotes>(EMPTY_NOTES)
+  const [karte, setKarte] = useState<string | null>(null)
+  const [generating, setGenerating] = useState(false)
+  const [karteError, setKarteError] = useState<string | null>(null)
+  const [karteCopied, setKarteCopied] = useState(false)
+
+  const toggleOption = (key: string, opt: string) => {
+    setAnswers(prev => {
+      const current = prev[key] ?? { selectedOptions: [], freeText: '' }
+      const exists = current.selectedOptions.includes(opt)
+      const selectedOptions = exists
+        ? current.selectedOptions.filter(o => o !== opt)
+        : [...current.selectedOptions, opt]
+      return { ...prev, [key]: { ...current, selectedOptions } }
+    })
+  }
+
+  const updateFreeText = (key: string, text: string) => {
+    setAnswers(prev => {
+      const current = prev[key] ?? { selectedOptions: [], freeText: '' }
+      return { ...prev, [key]: { ...current, freeText: text } }
+    })
+  }
 
   const handleCopy = async () => {
     const text = buildCopyText(patient, result)
     await navigator.clipboard.writeText(text)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  const handleGenerateKarte = async () => {
+    setGenerating(true)
+    setKarteError(null)
+    try {
+      const age = calcAge(patient.q9_birthday)
+      const res = await fetch('/api/karte', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patient, age, result, answers, notes }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'カルテ生成に失敗しました')
+      setKarte(data.karte)
+      setTimeout(() => {
+        document.getElementById('karte-result')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 100)
+    } catch (e) {
+      setKarteError(e instanceof Error ? e.message : 'カルテ生成に失敗しました')
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  const handleCopyKarte = async () => {
+    if (!karte) return
+    await navigator.clipboard.writeText(karte)
+    setKarteCopied(true)
+    setTimeout(() => setKarteCopied(false), 2000)
   }
 
   return (
@@ -73,12 +134,13 @@ export default function AnalysisResult({ patient, result, onBackToDetail, onBack
           </div>
         </div>
 
-        {/* Section 1: 施術前チェック項目 */}
+        {/* Section 1: 施術前チェック項目（記録可能） */}
         <section>
-          <h2 className="flex items-center gap-2 text-lg font-bold text-warm-brown-800 mb-4">
+          <h2 className="flex items-center gap-2 text-lg font-bold text-warm-brown-800 mb-2">
             <span className="w-7 h-7 rounded-full bg-terracotta-500 text-white text-sm flex items-center justify-center font-bold">1</span>
             施術前チェック項目
           </h2>
+          <p className="text-warm-brown-500 text-xs mb-4 ml-9">選択肢をタップで複数選択できます。自由記入欄も併用可能です。</p>
           <div className="space-y-4">
             {result.checkItems.map((category, ci) => (
               <div key={ci} className="bg-white rounded-xl shadow-sm border border-warm-brown-100 overflow-hidden">
@@ -86,28 +148,46 @@ export default function AnalysisResult({ patient, result, onBackToDetail, onBack
                   <h3 className="font-semibold text-terracotta-700 text-sm">{category.category}</h3>
                 </div>
                 <div className="divide-y divide-warm-brown-50">
-                  {category.items.map((item, ii) => (
-                    <div key={ii} className="px-5 py-4">
-                      <div className="flex items-start gap-3 mb-3">
-                        <div className="flex-1">
+                  {category.items.map((item, ii) => {
+                    const key = `${ci}-${ii}`
+                    const ans = answers[key] ?? { selectedOptions: [], freeText: '' }
+                    return (
+                      <div key={ii} className="px-5 py-4">
+                        <div className="mb-3">
                           <p className="font-medium text-warm-brown-900 text-sm">{item.question}</p>
                           <p className="text-warm-brown-400 text-xs mt-0.5">{item.reason}</p>
                         </div>
+                        {item.options && item.options.length > 0 && (
+                          <div className="flex flex-wrap gap-2 mb-3">
+                            {item.options.map((opt, oi) => {
+                              const selected = ans.selectedOptions.includes(opt)
+                              return (
+                                <button
+                                  key={oi}
+                                  type="button"
+                                  onClick={() => toggleOption(key, opt)}
+                                  className={`px-3 py-1.5 border text-xs rounded-full transition-colors ${
+                                    selected
+                                      ? 'bg-terracotta-500 border-terracotta-500 text-white'
+                                      : 'bg-warm-brown-50 border-warm-brown-200 text-warm-brown-700 hover:bg-terracotta-50 hover:border-terracotta-300'
+                                  }`}
+                                >
+                                  {selected && '✓ '}{opt}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        )}
+                        <textarea
+                          value={ans.freeText}
+                          onChange={e => updateFreeText(key, e.target.value)}
+                          placeholder="自由記入（追加メモがあれば）"
+                          rows={1}
+                          className="w-full text-sm border border-warm-brown-200 rounded-lg px-3 py-2 bg-warm-brown-50/30 text-warm-brown-900 placeholder-warm-brown-300 focus:outline-none focus:ring-2 focus:ring-terracotta-300 focus:border-transparent transition resize-y"
+                        />
                       </div>
-                      {item.options && item.options.length > 0 && (
-                        <div className="flex flex-wrap gap-2">
-                          {item.options.map((opt, oi) => (
-                            <span
-                              key={oi}
-                              className="px-3 py-1.5 bg-warm-brown-50 border border-warm-brown-200 text-warm-brown-700 text-xs rounded-full hover:bg-terracotta-50 hover:border-terracotta-300 hover:text-terracotta-700 cursor-default transition-colors"
-                            >
-                              {opt}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             ))}
@@ -140,6 +220,113 @@ export default function AnalysisResult({ patient, result, onBackToDetail, onBack
           </div>
         </section>
 
+        {/* Section 4: 施術者所見入力 */}
+        <section>
+          <h2 className="flex items-center gap-2 text-lg font-bold text-warm-brown-800 mb-4">
+            <span className="w-7 h-7 rounded-full bg-warm-brown-700 text-white text-sm flex items-center justify-center font-bold">4</span>
+            施術者所見・検査結果
+          </h2>
+          <div className="bg-white rounded-xl shadow-sm border border-warm-brown-100 p-5 space-y-4">
+            <NoteField
+              label="可動域"
+              placeholder="例: 前屈 60° / 後屈 制限あり / 側屈 R<L"
+              value={notes.rangeOfMotion}
+              onChange={v => setNotes(n => ({ ...n, rangeOfMotion: v }))}
+            />
+            <NoteField
+              label="疼痛部位"
+              placeholder="例: L4-L5 椎間関節周辺、右仙腸関節部に圧痛"
+              value={notes.painLocation}
+              onChange={v => setNotes(n => ({ ...n, painLocation: v }))}
+            />
+            <NoteField
+              label="姿勢など特徴"
+              placeholder="例: 骨盤後傾、胸椎後弯増強、頭部前方位"
+              value={notes.posture}
+              onChange={v => setNotes(n => ({ ...n, posture: v }))}
+            />
+            <NoteField
+              label="その他"
+              placeholder="例: ストレス高め、デスクワーク中心、出張前で時間制約あり"
+              value={notes.other}
+              onChange={v => setNotes(n => ({ ...n, other: v }))}
+            />
+          </div>
+        </section>
+
+        {/* Section 5: カルテ生成 */}
+        <section>
+          <h2 className="flex items-center gap-2 text-lg font-bold text-warm-brown-800 mb-4">
+            <span className="w-7 h-7 rounded-full bg-terracotta-600 text-white text-sm flex items-center justify-center font-bold">5</span>
+            カルテ生成
+          </h2>
+          <div className="bg-white rounded-xl shadow-sm border border-warm-brown-100 p-5">
+            <p className="text-warm-brown-600 text-sm mb-4">
+              上で記録した回答と所見をもとに、AIがカルテを生成します。
+            </p>
+            <button
+              onClick={handleGenerateKarte}
+              disabled={generating}
+              className="w-full sm:w-auto flex items-center justify-center gap-2 bg-terracotta-500 hover:bg-terracotta-600 disabled:opacity-60 text-white font-semibold px-6 py-3 rounded-xl transition-colors"
+            >
+              {generating ? (
+                <>
+                  <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10" strokeWidth="4" className="opacity-25" />
+                    <path d="M4 12a8 8 0 018-8" strokeWidth="4" strokeLinecap="round" />
+                  </svg>
+                  生成中...
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                  </svg>
+                  AIでカルテを生成
+                </>
+              )}
+            </button>
+            {karteError && (
+              <div className="mt-4 bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">
+                ⚠ {karteError}
+              </div>
+            )}
+            {karte && (
+              <div id="karte-result" className="mt-6 border-t border-warm-brown-100 pt-5">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-semibold text-warm-brown-800 text-sm">生成されたカルテ</h3>
+                  <button
+                    onClick={handleCopyKarte}
+                    className="flex items-center gap-1.5 bg-warm-brown-500 hover:bg-warm-brown-600 text-white text-xs px-3 py-1.5 rounded-lg transition-colors"
+                  >
+                    {karteCopied ? (
+                      <>
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        コピーしました
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                        コピー
+                      </>
+                    )}
+                  </button>
+                </div>
+                <pre className="whitespace-pre-wrap text-sm text-warm-brown-900 leading-relaxed bg-warm-brown-50/50 border border-warm-brown-100 rounded-lg p-4 font-sans">
+{karte}
+                </pre>
+                <p className="text-xs text-warm-brown-400 mt-3">
+                  ※ コピーしてスプレッドシートのカルテ欄に貼り付けてください。
+                </p>
+              </div>
+            )}
+          </div>
+        </section>
+
         {/* Disclaimer */}
         <div className="bg-warm-brown-50 border border-warm-brown-200 rounded-lg px-5 py-4 text-xs text-warm-brown-500 leading-relaxed">
           ※ AIの出力は施術方針の参考情報であり、医療診断ではありません。施術の最終判断は必ず施術者が行ってください。
@@ -167,6 +354,25 @@ export default function AnalysisResult({ patient, result, onBackToDetail, onBack
           </button>
         </div>
       </main>
+    </div>
+  )
+}
+
+function NoteField({
+  label, placeholder, value, onChange,
+}: {
+  label: string; placeholder: string; value: string; onChange: (v: string) => void
+}) {
+  return (
+    <div>
+      <label className="block text-xs font-semibold text-warm-brown-700 mb-1.5">{label}</label>
+      <textarea
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        rows={2}
+        className="w-full text-sm border border-warm-brown-200 rounded-lg px-3 py-2 bg-white text-warm-brown-900 placeholder-warm-brown-300 focus:outline-none focus:ring-2 focus:ring-warm-brown-400 focus:border-transparent transition resize-y"
+      />
     </div>
   )
 }
@@ -229,6 +435,19 @@ function FollowUpItem({ icon, label, value, last }: { icon: string; label: strin
       </div>
     </div>
   )
+}
+
+function calcAge(birthday: string): string {
+  if (!birthday) return '不明'
+  const normalized = birthday
+    .replace(/年/g, '/').replace(/月/g, '/').replace(/日/g, '').trim()
+  const d = new Date(normalized)
+  if (isNaN(d.getTime())) return '不明'
+  const today = new Date()
+  let age = today.getFullYear() - d.getFullYear()
+  const m = today.getMonth() - d.getMonth()
+  if (m < 0 || (m === 0 && today.getDate() < d.getDate())) age--
+  return `${age}歳`
 }
 
 function buildCopyText(patient: Patient, result: AnalysisResultType): string {

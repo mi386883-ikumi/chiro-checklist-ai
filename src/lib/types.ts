@@ -54,3 +54,17 @@ export interface AnalysisResult {
   advice: Advice[]
   followUp: FollowUp
 }
+
+// 質問ごとの回答状態
+export interface AnswerState {
+  selectedOptions: string[]
+  freeText: string
+}
+
+// 施術者による手動入力欄
+export interface ManualNotes {
+  rangeOfMotion: string  // 可動域
+  painLocation: string   // 疼痛部位
+  posture: string        // 姿勢など特徴
+  other: string          // その他
+}
