@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const SESSION_MAX_MS = 10 * 60 * 1000 // 10分（無操作時のタイムアウト）
+const SESSION_MAX_MS = 120 * 60 * 1000 // 120分（無操作時のタイムアウト）
 
 function encodeB64(str: string): string {
   const bytes = new TextEncoder().encode(str)
