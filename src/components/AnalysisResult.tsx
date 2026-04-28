@@ -79,7 +79,7 @@ export default function AnalysisResult({ patient, result, onBackToDetail, onBack
     // Google Sheets で 1 セルに収まるように HTML(table) + plain text の両方をクリップボードに書き込む
     const escapeHtml = (s: string) =>
       s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    const html = `<table><tbody><tr><td style="white-space:pre-wrap">${karte
+    const html = `<table><tbody><tr><td style="white-space:pre-wrap;text-align:center;vertical-align:middle">${karte
       .split('\n')
       .map(escapeHtml)
       .join('<br>')}</td></tr></tbody></table>`
