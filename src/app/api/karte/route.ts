@@ -13,7 +13,9 @@ const SYSTEM_PROMPT = `あなたは整体院のカルテ作成をサポートす
 【その他】：（特記事項、生活背景、施術者が把握しておくべき情報）
 
 ルール:
-- 各項目は1〜3行で簡潔に
+- 各項目は1〜2行で簡潔に
+- **項目間に空行を入れない**（連続した行で出力すること）
+- **各項目内の改行も極力避け、1行に収める**
 - 過剰な医学用語は避け、現場で読み返しやすい言葉で
 - 医療診断は行わない（「〜性腰痛」のような表現は推定として括弧書きでOK）
 - 情報が無い項目は空欄、または「なし」と記載`
@@ -102,7 +104,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'AIから予期しないレスポンス形式が返されました' }, { status: 500 })
     }
 
-    return NextResponse.json({ karte: content.text.trim() })
+    // 空行を削除して詰める
+    const karte = content.text
+      .trim()
+      .split('\n')
+      .map(l => l.trimEnd())
+      .filter(l => l.length > 0)
+      .join('\n')
+
+    return NextResponse.json({ karte })
   } catch (err) {
     console.error('Karte error:', err)
     const msg = err instanceof Error ? err.message : String(err)
