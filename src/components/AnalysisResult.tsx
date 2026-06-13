@@ -76,23 +76,27 @@ export default function AnalysisResult({ patient, result, onBackToDetail, onBack
 
   const handleCopyKarte = async () => {
     if (!karte) return
-    // Google Sheets で 1 セルに収まるように HTML(table) + plain text の両方をクリップボードに書き込む
+    // スプレッドシートの「1セル内」に各項目を改行して貼り付けられるようにする。
+    // ① text/html: 1つの <td> 内を <br> で改行（Google Sheets はこれを優先）
+    // ② text/plain: 全体をダブルクオートで囲む（TSV 仕様）→ HTML 非対応の貼り付け先でも
+    //    1セル内改行として扱われる
     const escapeHtml = (s: string) =>
       s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    const html = `<google-sheets-html-origin><table><tbody><tr><td align="center" valign="middle" style="white-space:pre-wrap;text-align:center;vertical-align:middle;horizontal-align:center">${karte
+    const html = `<google-sheets-html-origin><table><tbody><tr><td style="white-space:pre-wrap;vertical-align:top">${karte
       .split('\n')
       .map(escapeHtml)
       .join('<br>')}</td></tr></tbody></table></google-sheets-html-origin>`
+    const plain = `"${karte.replace(/"/g, '""')}"`
     try {
       await navigator.clipboard.write([
         new ClipboardItem({
           'text/html': new Blob([html], { type: 'text/html' }),
-          'text/plain': new Blob([karte], { type: 'text/plain' }),
+          'text/plain': new Blob([plain], { type: 'text/plain' }),
         }),
       ])
     } catch {
       // 古いブラウザ向けフォールバック
-      await navigator.clipboard.writeText(karte)
+      await navigator.clipboard.writeText(plain)
     }
     setKarteCopied(true)
     setTimeout(() => setKarteCopied(false), 2000)
