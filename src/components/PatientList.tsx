@@ -13,17 +13,22 @@ interface Props {
 
 export default function PatientList({ patients, loading, error, onSelect, onRefresh }: Props) {
   const [query, setQuery] = useState('')
+  const [sortDesc, setSortDesc] = useState(true) // デフォルト：患者番号の大きい順（降順）
 
   const filtered = useMemo(() => {
     const q = query.trim()
-    if (!q) return patients
     const lower = q.toLowerCase()
-    return patients.filter(p =>
-      p.q2_name.toLowerCase().includes(lower) ||
-      p.q3_kana.toLowerCase().includes(lower) ||
-      p.q1_complaint.includes(q)
+    const list = !q
+      ? patients
+      : patients.filter(p =>
+          p.q2_name.toLowerCase().includes(lower) ||
+          p.q3_kana.toLowerCase().includes(lower) ||
+          p.q1_complaint.includes(q)
+        )
+    return [...list].sort((a, b) =>
+      sortDesc ? b.rowNumber - a.rowNumber : a.rowNumber - b.rowNumber
     )
-  }, [patients, query])
+  }, [patients, query, sortDesc])
 
   return (
     <div className="min-h-screen bg-cream">
@@ -92,6 +97,18 @@ export default function PatientList({ patients, loading, error, onSelect, onRefr
                   （{query ? `${filtered.length} / ${patients.length}名` : `${patients.length}名`}）
                 </span>
               </h2>
+
+              {/* 並び替え切り替えボタン */}
+              <button
+                onClick={() => setSortDesc(v => !v)}
+                className="flex items-center gap-1.5 bg-white hover:bg-warm-brown-50 border border-warm-brown-200 text-warm-brown-700 text-sm px-3 py-2 rounded-lg transition-colors shrink-0"
+                title="患者番号の並び順を切り替え"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9M3 12h5m0 0l4-4m-4 4l4 4m5-12v12m0 0l3-3m-3 3l-3-3" />
+                </svg>
+                患者番号 {sortDesc ? '大きい順' : '小さい順'}
+              </button>
 
               {/* 検索ボックス */}
               <div className="relative flex-1 max-w-sm">
